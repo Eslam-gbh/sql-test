@@ -28,6 +28,18 @@ class TestExample(DbTest):
                            os.path.join(PATH_TO_SQL_DIR, "organizations.sql"))
 
         sql = """
+            SELECT
+               COUNT(t2.sales_organization_id) AS subordinates_count,
+               t1.id
+            FROM
+               organizations AS t1
+               LEFT OUTER JOIN
+                  enterprise_sales_enterprise_customers AS t2
+                  ON t1.id = t2.sales_organization_id
+            GROUP BY
+               t1.id
+            ORDER BY
+               t1.id;
         """
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(sql)

@@ -3,6 +3,8 @@ from .dbtest import (DbTest, dbconnect)
 import os
 from psycopg2.extras import (RealDictCursor, RealDictRow)
 
+PREDIFIENED_GEO_JSON = '{"SRID":4326,"type":"Polygon","coordinates":[[[130.27313232421875,30.519681272749402],[131.02020263671875,30.519681272749402],[131.02020263671875,30.80909017893796],[130.27313232421875,30.80909017893796],[130.27313232421875,30.519681272749402]]]}'  # noqa
+
 PATH_TO_SQL_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "sql"))
 
@@ -169,11 +171,64 @@ class TestExample(DbTest):
 
     @dbconnect
     def test_segments_using_geojson_boundary(self, conn):
+        """
+        bounds geos were fetched then processed by converting to Text
+        and then back to geos because of not matching SRID between
+        Stored Geos and Geo Json.
+
+        you can replicate the error by applying ST_Within directly on
+        Stored Geo and the Geo Json
+        """
         self.load_fixtures(conn,
                            os.path.join(PATH_TO_SQL_DIR, "japan_segments.sql"))
 
-        sql = """
-        """
+        sql = f"""
+            WITH segment_geo_texts AS
+            (
+               SELECT
+                  id,
+                  ST_AsText(bounds) AS seg_geo_text
+               FROM
+                  japan_segments
+            )
+            ,
+            segment_geos AS
+            (
+               SELECT
+                  id,
+                  ST_GeomFromText(seg_geo_text) AS segment_geo
+               FROM
+                  segment_geo_texts
+            )
+            ,
+            segment_buffered_polygons AS
+            (
+               SELECT
+                  id,
+                  ST_Buffer(ST_GeomFromGeoJSON('{PREDIFIENED_GEO_JSON}'), 20) AS geo_json_polygon,
+                  ST_BUFFER(segment_geo, 20) AS segment_polygon
+               FROM
+                  segment_geos
+            )
+            ,
+            results AS
+            (
+               SELECT
+                     id,
+                     ST_Within(segment_polygon, geo_json_polygon) As is_within_req_polygon
+               FROM
+                  segment_buffered_polygons
+            )
+
+
+
+            SELECT
+               id
+            FROM
+               results
+            WHERE
+               is_within_req_polygon = 't';
+        """ # noqa
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(sql)
             actual = cur.fetchall()

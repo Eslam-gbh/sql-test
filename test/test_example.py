@@ -83,6 +83,21 @@ class TestExample(DbTest):
                            os.path.join(PATH_TO_SQL_DIR, "japan_segments.sql"))
 
         sql = """
+            WITH centroids AS
+            (
+               SELECT
+                  id,
+                  ST_Centroid(bounds) as centroid
+               from
+                  japan_segments
+            )
+
+            SELECT
+               id,
+               ST_X(centroid) AS longitude,
+               ST_Y(centroid) AS latitude
+            FROM
+               centroids;
         """
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(sql)
